@@ -1,0 +1,22 @@
+# Python caches
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+
+# Virtual environments (uv-managed)
+.venv/
+
+# OS/editor junk
+.DS_Store
+.idea/
+.vscode/
+
+# Build artifacts
+dist/
+build/
+*.egg-info/
+htmlcov/
+.coverage
+coverage.xml
+
