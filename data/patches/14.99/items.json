@@ -1,0 +1,13 @@
+[
+  {"id": 3123, "name": "Executioner's Calling", "price": 800, "tags": ["GrievousWounds"]},
+  {"id": 3814, "name": "Mortal Reminder", "price": 3000, "tags": ["GrievousWounds", "ArmorPen"]},
+  {"id": 6609, "name": "Chempunk Chainsword", "price": 2800, "tags": ["GrievousWounds"]},
+  {"id": 6673, "name": "Kraken Slayer", "price": 3000, "tags": ["OnHit"]},
+  {"id": 6671, "name": "Galeforce", "price": 3000, "tags": ["Dash"]},
+  {"id": 6692, "name": "Eclipse", "price": 3100, "tags": ["Lethality"]},
+  {"id": 6655, "name": "Luden's Companion", "price": 3200, "tags": ["MagicPen"]},
+  {"id": 6656, "name": "Liandry's Torment", "price": 3200, "tags": ["Burn"]},
+  {"id": 3001, "name": "Evenshroud", "price": 2300, "tags": ["Tank", "Engage"]},
+  {"id": 3190, "name": "Locket of the Iron Solari", "price": 2200, "tags": ["AntiShield"]}
+]
+
