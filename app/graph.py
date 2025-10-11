@@ -64,6 +64,7 @@ def build_initial_state(patch: str, inputs: AgentInputs, profile: Dict[str, Any]
 
 
 def run_pev(state: AgentState, max_loops: int = 1) -> AgentState:
+    # plan -> evidence -> verify
     state = node_retrieve(state)
     state = node_retrieval_agent(state)
     state = node_threat(state)
