@@ -9,6 +9,19 @@ FORBIDDEN_SR_TERMS: Set[str] = {"dragon", "baron", "jungle", "rift herald"}
 
 
 def guardrail_check(state: AgentState, draft: StrategyDraft) -> AgentState:
+    """
+    Validate the draft against simple structural and content rules.
+
+    Checks:
+    - TL;DR max length (<= 3 lines) to keep outputs concise.
+    - ARAM-only scope: disallow Summoner's Rift specific terms.
+    - Item existence: every item id in the build plan must exist in facts for
+      the active patch.
+
+    Outcome:
+    - On violations, record them in state.verify and return without finalizing.
+    - If clean, copy the draft into state.final and mark verify.ok = True.
+    """
     violations: List[Dict] = []
 
     # TL;DR length

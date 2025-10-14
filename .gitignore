@@ -21,3 +21,9 @@ htmlcov/
 coverage.xml
 
 data/
+
+# Secrets (API keys, etc.)
+.secrets/
+*.secret
+*.secrets
+secrets.json
