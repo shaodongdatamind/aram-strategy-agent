@@ -41,10 +41,56 @@ class OpenAIClient:
             return data["choices"][0]["message"]["content"]
 
 
+def _to_primitive_threat(threat: Dict[str, Any]) -> Dict[str, Any]:
+    out: Dict[str, Any] = {}
+    if not isinstance(threat, dict):
+        return out
+    scores = []
+    for s in threat.get("scores", []) or []:
+        if hasattr(s, "model_dump"):
+            d = s.model_dump()
+        elif isinstance(s, dict):
+            d = s
+        else:
+            # best-effort fallback
+            try:
+                d = {
+                    "unit": getattr(s, "unit", "unknown"),
+                    "score": getattr(s, "score", 0),
+                    "reasons": list(getattr(s, "reasons", [])),
+                }
+            except Exception:
+                d = {"unit": "unknown", "score": 0, "reasons": []}
+        scores.append({
+            "unit": d.get("unit"),
+            "score": d.get("score"),
+            "reasons": d.get("reasons", []),
+        })
+    if scores:
+        out["scores"] = scores
+    return out
+
+
 def format_strategy_prompt(patch: str, inputs: Dict[str, Any], facts: Dict[str, Any], retrieval: Dict[str, Any], threat: Dict[str, Any]) -> List[Dict[str, str]]:
     system = (
-        "You are an ARAM strategy assistant. Output ONLY valid JSON matching the StrategyDraft schema. "
-        "Cite item ids from facts.items and include snippet ids in evidence. TL;DR must be ≤ 3 lines."
+        "You are a League of Legends ARAM strategy assistant. Return ONE valid JSON object ONLY, matching this exact schema and lowercase keys. "
+        "No prose, no markdown, no extra keys. Cite item ids and snippet ids.\n\n"
+        "Required keys and types:\n"
+        "- tldr: array of up to 3 short strings\n"
+        "- assumptions: object\n"
+        "- threats: array of {name: string, why: string}\n"
+        "- role: one of [peel, engage, poke, zone, front_to_back, anti_dive]\n"
+        "- build_plan: array of {trigger: string, items: array of {id: number, name: string}, why: string, timing?: string}\n"
+        "- evidence: array of {type: 'item'|'snippet', id: number|string}\n\n"
+        "Output template example (fill with your content):\n"
+        "{\n"
+        "  \"tldr\": [\"...\", \"...\"],\n"
+        "  \"assumptions\": {\"patch\": \"...\", \"ally_comp\": [], \"enemy_comp\": []},\n"
+        "  \"threats\": [{\"name\": \"...\", \"why\": \"...\"}],\n"
+        "  \"role\": \"front_to_back\",\n"
+        "  \"build_plan\": [{\"trigger\": \"...\", \"items\": [{\"id\": 0, \"name\": \"...\"}], \"why\": \"...\", \"timing\": \"...\"}],\n"
+        "  \"evidence\": [{\"type\": \"item\", \"id\": 0}, {\"type\": \"snippet\", \"id\": \"...\"}]\n"
+        "}"
     )
     user = {
         "patch": patch,
@@ -53,7 +99,7 @@ def format_strategy_prompt(patch: str, inputs: Dict[str, Any], facts: Dict[str, 
             "items": [{"id": i["id"] if isinstance(i, dict) else i.id, "name": i["name"] if isinstance(i, dict) else i.name, "tags": i.get("tags", []) if isinstance(i, dict) else getattr(i, "tags", [])} for i in facts.get("items", [])],
         },
         "retrieval": {"snippets": [{"id": s["id"] if isinstance(s, dict) else s.id, "text": s["text"] if isinstance(s, dict) else s.text} for s in retrieval.get("snippets", [])]},
-        "threat": threat,
+        "threat": _to_primitive_threat(threat),
     }
     return [
         {"role": "system", "content": system},

@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import logging
 from typing import List, Dict, Any
 import json
+import os
 
 from .state import AgentState, StrategyDraft, BuildPlanStep, BuildItem
 from .llm import OpenAIClient, format_strategy_prompt
@@ -50,6 +52,9 @@ def make_build_plan(items: List[Dict[str, Any]], enemy_comp: List[str]) -> List[
     return steps
 
 
+logger = logging.getLogger(__name__)
+
+
 def generate_strategy(state: AgentState) -> StrategyDraft:
     """
     Compose a structured strategy draft from state.
@@ -71,39 +76,7 @@ def generate_strategy(state: AgentState) -> StrategyDraft:
     facts = state.facts or {}
     items = facts.get("items", [])
 
-    # Try LLM-backed plan first (if API configured), else fallback to heuristics
-    try:
-        client = OpenAIClient(model="gpt-4o-mini")
-        messages = format_strategy_prompt(
-            patch=patch,
-            inputs={
-                "mode": inputs.mode,
-                "ally_comp": inputs.ally_comp or [],
-                "enemy_comp": inputs.enemy_comp or [],
-                "my_champ": inputs.my_champ or my_champ,
-                "question": inputs.question or "",
-            },
-            facts={"items": [i.model_dump() if hasattr(i, "model_dump") else i for i in items]},
-            retrieval={"snippets": [s.model_dump() if hasattr(s, "model_dump") else s for s in (state.retrieval or {}).get("snippets", [])]},
-            threat=state.threat or {},
-        )
-        content = client.chat(messages, temperature=0.0)
-        data: Dict[str, Any] = {}
-        try:
-            data = json.loads(content)
-        except Exception:
-            # Attempt to extract JSON if the model added text around it
-            start = content.find("{")
-            end = content.rfind("}")
-            if start != -1 and end != -1 and end > start:
-                data = json.loads(content[start : end + 1])
-            else:
-                raise
-
-        # Coerce into StrategyDraft safely
-        return StrategyDraft.model_validate(data)
-    except Exception:
-        # Fallback heuristic strategy (deterministic)
+    def fallback_strategy() -> StrategyDraft:
         role = pick_role(my_champ, enemy)
         build_plan = make_build_plan([i.model_dump() if hasattr(i, "model_dump") else i for i in items], enemy)
 
@@ -136,5 +109,67 @@ def generate_strategy(state: AgentState) -> StrategyDraft:
             build_plan=build_plan,
             evidence=evidence,
         )
+
+    # Try LLM-backed plan first (if API configured), else fallback to heuristics
+    strict = os.environ.get("STRATEGY_LLM_STRICT", "0").lower() not in {"", "0", "false", "no"}
+    try:
+        client = OpenAIClient(model="gpt-4o-mini")
+    except Exception:
+        logger.exception("StrategyAgent: failed to initialize OpenAI client")
+        if strict:
+            raise
+        return fallback_strategy()
+
+    try:
+        messages = format_strategy_prompt(
+            patch=patch,
+            inputs={
+                "mode": inputs.mode,
+                "ally_comp": inputs.ally_comp or [],
+                "enemy_comp": inputs.enemy_comp or [],
+                "my_champ": inputs.my_champ or my_champ,
+                "question": inputs.question or "",
+            },
+            facts={"items": [i.model_dump() if hasattr(i, "model_dump") else i for i in items]},
+            retrieval={"snippets": [s.model_dump() if hasattr(s, "model_dump") else s for s in (state.retrieval or {}).get("snippets", [])]},
+            threat=state.threat or {},
+        )
+    except Exception:
+        logger.exception("StrategyAgent: format_strategy_prompt failed")
+        if strict:
+            raise
+        return fallback_strategy()
+
+    try:
+        content = client.chat(messages, temperature=0.0, response_format={"type": "json_object"})
+    except Exception:
+        logger.exception("StrategyAgent: OpenAI chat failed")
+        if strict:
+            raise
+        return fallback_strategy()
+
+    try:
+        data: Dict[str, Any] = json.loads(content)
+    except Exception:
+        try:
+            start = content.find("{")
+            end = content.rfind("}")
+            if start != -1 and end != -1 and end > start:
+                data = json.loads(content[start : end + 1])
+            else:
+                raise ValueError("No JSON object found in LLM content")
+        except Exception:
+            logger.exception("StrategyAgent: parsing LLM JSON failed; content snippet: %s", content[:300])
+            if strict:
+                raise
+            return fallback_strategy()
+
+    try:
+        return StrategyDraft.model_validate(data)
+    except Exception:
+        logger.exception("StrategyAgent: StrategyDraft validation failed; data: %s", str(data)[:300])
+        if strict:
+            raise
+        return fallback_strategy()
 
 
