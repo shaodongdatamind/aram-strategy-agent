@@ -66,29 +66,67 @@ def load_items(client: httpx.Client, version: str) -> List[Dict[str, Any]]:
         price = int(v.get("gold", {}).get("total", 0))
         tags = list(v.get("tags", []) or [])
         tags = augment_functional_tags(name, item_id, tags)
+        stats: Dict[str, Any] = v.get("stats", {}) or {}
+        description: str = v.get("plaintext") or v.get("description") or ""
         results.append({
             "id": item_id,
             "name": name,
             "price": price,
             "tags": tags,
+            "stats": stats,
+            "description": description,
         })
     results.sort(key=lambda x: x["id"])
     return results
 
 
-def load_champs(client: httpx.Client, version: str) -> List[Dict[str, Any]]:
-    url = f"{CDN_BASE.format(version=version)}/champion.json"
+def load_champs_full(client: httpx.Client, version: str) -> List[Dict[str, Any]]:
+    """
+    Load champions with richer details from championFull.json, including:
+    - lore (blurb)
+    - passive (name, description)
+    - spells (Q/W/E/R): name, tooltip/description, cooldown/cost/range (Burn formats), effects
+    """
+    url = f"{CDN_BASE.format(version=version)}/championFull.json"
     data = fetch_json(client, url)
     results: List[Dict[str, Any]] = []
-    for champ_name, v in data.get("data", {}).items():
+    for champ_name, v in (data.get("data", {}) or {}).items():
         key = v.get("key", champ_name)
         name = v.get("name", champ_name)
         tags = v.get("tags", []) or []
+        blurb = v.get("lore") or v.get("blurb") or ""
+
+        passive_raw: Dict[str, Any] = v.get("passive", {}) or {}
+        passive = {
+            "name": passive_raw.get("name", ""),
+            "description": passive_raw.get("description", ""),
+        }
+
+        spells: List[Dict[str, Any]] = []
+        for idx, sp in enumerate(v.get("spells", []) or []):
+            # effectBurn is a list whose indices map to e1,e2,e3 in tooltips
+            effects = {}
+            for i, eff in enumerate(sp.get("effectBurn") or []):
+                if eff:
+                    effects[str(i)] = eff
+            spells.append({
+                "slot": ["Q", "W", "E", "R"][idx] if idx < 4 else str(idx),
+                "name": sp.get("name", ""),
+                "description": sp.get("tooltip") or sp.get("description", ""),
+                "cooldown": sp.get("cooldownBurn", ""),
+                "cost": sp.get("costBurn", ""),
+                "range": sp.get("rangeBurn", ""),
+                "effects": effects,
+            })
+
         results.append({
             "key": str(key),
             "name": name,
             "tags": tags,
             "notes": None,
+            "blurb": blurb,
+            "passive": passive,
+            "spells": spells,
         })
     results.sort(key=lambda x: x["name"].lower())
     return results
@@ -130,7 +168,7 @@ def main() -> int:
         target_dir.mkdir(parents=True, exist_ok=True)
 
         items = load_items(client, version)
-        champs = load_champs(client, version)
+        champs = load_champs_full(client, version)
         runes = load_runes(client, version)
 
         (target_dir / "items.json").write_text(json.dumps(items, ensure_ascii=False, indent=2), encoding="utf-8")

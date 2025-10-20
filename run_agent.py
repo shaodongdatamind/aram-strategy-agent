@@ -5,9 +5,10 @@ from app.state import AgentInputs
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
 inputs = AgentInputs(
-    mode="pre_game", 
+    mode="pre_game",
+    my_champ="Ahri",
     ally_comp=[
-        "Ahri", "Amumu", "Katarina", "Jarvan IV", "Ashe"
+        "Amumu", "Katarina", "Jarvan IV", "Ashe"
     ], 
     enemy_comp=[
         "Soraka","Janna","Jinx","Corki","Kled"

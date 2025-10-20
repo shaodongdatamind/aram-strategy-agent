@@ -141,9 +141,9 @@ def generate_strategy(state: AgentState) -> StrategyDraft:
         return fallback_strategy()
 
     try:
-        logger.info("StrategyAgent: messages: %s", messages)
+        # logger.info("StrategyAgent: messages: %s", messages)
         content = client.chat(messages, temperature=0.0, response_format={"type": "json_object"})
-        logger.info("StrategyAgent: chat output: %s", content)
+        # logger.info("StrategyAgent: chat output: %s", content)
     except Exception:
         logger.exception("StrategyAgent: OpenAI chat failed")
         if strict:
