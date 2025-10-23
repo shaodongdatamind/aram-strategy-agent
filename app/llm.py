@@ -4,7 +4,7 @@ import json
 import os
 from typing import Any, Dict, List, Optional
 
-import httpx
+from openai import OpenAI
 
 
 class OpenAIClient:
@@ -18,6 +18,8 @@ class OpenAIClient:
         self.model = model
         self.api_key = self._resolve_api_key()
         self.base_url = os.environ.get("OPENAI_BASE_URL", "https://api.openai.com/v1")
+        # Initialize official SDK client (respects OPENAI_API_KEY and base_url)
+        self._client = OpenAI(api_key=self.api_key, base_url=self.base_url)
 
     def _resolve_api_key(self) -> str:
         key = os.environ.get("OPENAI_API_KEY")
@@ -30,15 +32,15 @@ class OpenAIClient:
         raise RuntimeError("OPENAI_API_KEY not set and .secrets/openai_api_key not found")
 
     def chat(self, messages: List[Dict[str, str]], response_format: Optional[Dict[str, Any]] = None, temperature: float = 0.0) -> str:
-        headers = {"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"}
-        body: Dict[str, Any] = {"model": self.model, "messages": messages, "temperature": temperature}
+        params: Dict[str, Any] = {
+            "model": self.model,
+            "messages": messages,
+            "temperature": temperature,
+        }
         if response_format is not None:
-            body["response_format"] = response_format
-        with httpx.Client(timeout=60) as client:
-            resp = client.post(f"{self.base_url}/chat/completions", headers=headers, json=body)
-            resp.raise_for_status()
-            data = resp.json()
-            return data["choices"][0]["message"]["content"]
+            params["response_format"] = response_format
+        resp = self._client.chat.completions.create(**params)
+        return resp.choices[0].message.content or ""
 
 
 def _to_primitive_threat(threat: Dict[str, Any]) -> Dict[str, Any]:

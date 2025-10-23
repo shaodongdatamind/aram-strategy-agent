@@ -13,7 +13,7 @@ from .guardrail import guardrail_check
 DEFAULT_PATCH = "14.99"
 
 
-def node_retrieve(state: AgentState) -> AgentState:
+def node_load_patch_facts(state: AgentState) -> AgentState:
     items, champs, runes, guides = load_patch_data(state.patch)
     state.facts = {
         "items": items,
@@ -25,7 +25,7 @@ def node_retrieve(state: AgentState) -> AgentState:
     return state
 
 
-def node_retrieval_agent(state: AgentState) -> AgentState:
+def node_search_guides (state: AgentState) -> AgentState:
     guides = []
     if state.facts and "guides" in state.facts:
         guides = state.facts["guides"]  # type: ignore[assignment]
@@ -65,8 +65,8 @@ def build_initial_state(patch: str, inputs: AgentInputs, profile: Dict[str, Any]
 
 def run_pev(state: AgentState, max_loops: int = 1) -> AgentState:
     # plan -> evidence -> verify
-    state = node_retrieve(state)
-    state = node_retrieval_agent(state)
+    state = node_load_patch_facts(state)
+    state = node_search_guides (state)
     state = node_threat(state)
     state = node_strategy(state)
     state = node_guardrail(state)

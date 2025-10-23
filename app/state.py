@@ -1,20 +1,22 @@
 from __future__ import annotations
 
 from typing import Any, Dict, List, Literal, Optional, TypedDict
-from pydantic import BaseModel, Field, conlist
+from pydantic import BaseModel, conlist
 
 
 class ItemRow(BaseModel):
     id: int
     name: str
     price: int
-    tags: List[str] = Field(default_factory=list)
+    stats: Optional[Dict[str, Any]] = None
+    description: Optional[str] = None
+    tags: List[str] = []
 
 
 class ChampRow(BaseModel):
     key: str
     name: str
-    tags: List[str] = Field(default_factory=list)
+    tags: List[str] = []
     notes: Optional[str] = None
 
 
@@ -33,7 +35,7 @@ class Snippet(BaseModel):
 class ThreatScore(BaseModel):
     unit: str
     score: float
-    reasons: List[str] = Field(default_factory=list)
+    reasons: List[str] = []
 
 
 class BuildItem(BaseModel):
