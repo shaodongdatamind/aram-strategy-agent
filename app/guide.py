@@ -1,17 +1,16 @@
 from __future__ import annotations
 
-import argparse
-import json
+import logging
 import re
 import time
 import unicodedata
-from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import List
 
 import httpx
 
+from .state import Snippet
 
-DATA_ROOT = Path(__file__).resolve().parents[1] / "data" / "patches"
+logger = logging.getLogger(__name__)
 
 
 def slugify_champion(name: str) -> str:
@@ -23,7 +22,7 @@ def slugify_champion(name: str) -> str:
     return cleaned.strip().replace(" ", "-")
 
 
-def fetch_metasrc_aram(champ_name: str, client: httpx.Client) -> Optional[str]:
+def _fetch_guide(champ_name: str, client: httpx.Client) -> str | None:
     """Fetch high-quality ARAM guide from metasrc.com using proven extraction patterns."""
     slug = slugify_champion(champ_name)
     url = f"https://www.metasrc.com/lol/aram/build/{slug}"
@@ -42,8 +41,7 @@ def fetch_metasrc_aram(champ_name: str, client: httpx.Client) -> Optional[str]:
         clean_html = re.sub(r'<script[^>]*>.*?</script>', '', html_text, flags=re.DOTALL | re.IGNORECASE)
         clean_html = re.sub(r'<style[^>]*>.*?</style>', '', clean_html, flags=re.DOTALL | re.IGNORECASE)
         
-        # Extract text content (similar to BeautifulSoup.stripped_strings)
-        # Remove HTML tags and collapse whitespace
+        # Extract text content (remove HTML tags and collapse whitespace)
         text_content = re.sub(r'<[^>]+>', ' ', clean_html)
         text_content = ' '.join(text_content.split())
         
@@ -106,43 +104,32 @@ def fetch_metasrc_aram(champ_name: str, client: httpx.Client) -> Optional[str]:
         
         return None
     except Exception as e:
+        logger.warning(f"Failed to fetch guide for {champ_name}: {e}")
         return None
 
 
-def main() -> int:
-    parser = argparse.ArgumentParser(description="Fetch ARAM guide snippets into data/patches/<patch>/guides.json")
-    parser.add_argument("--patch", required=True, help="Patch dir name like 15.20 or 14.99")
-    parser.add_argument("--delay", type=float, default=0.4, help="Delay seconds between requests (politeness)")
-    args = parser.parse_args()
-
-    patch_dir = DATA_ROOT / args.patch
-    champs_path = patch_dir / "champs.json"
-    out_path = patch_dir / "guides.json"
-
-    if not champs_path.exists():
-        raise SystemExit(f"Missing {champs_path}")
-
-    champs: List[Dict[str, Any]] = json.loads(champs_path.read_text(encoding="utf-8"))
-
-    results: List[Dict[str, Any]] = []
-    with httpx.Client(follow_redirects=True) as client:
-        for row in champs:
-            name = row.get("name") or row.get("Name")
-            if not name:
+def fetch_guides(champ_names: List[str]) -> List[Snippet]:
+    """
+    Fetch ARAM guides at runtime for given champion names.
+    Returns list of Snippet objects.
+    """
+    if not champ_names:
+        return []
+    
+    snippets: List[Snippet] = []
+    with httpx.Client(follow_redirects=True, timeout=15) as client:
+        for champ in champ_names:
+            if not champ:
                 continue
-            text = fetch_metasrc_aram(name, client)
+            text = _fetch_guide(champ, client)
             if text:
-                results.append({
-                    "id": slugify_champion(name),
-                    "champ": name,
-                    "text": text,
-                })
-            time.sleep(args.delay)
-
-    out_path.write_text(json.dumps(results, ensure_ascii=False, indent=2), encoding="utf-8")
-    print(f"Wrote {len(results)} snippets to {out_path}")
-    return 0
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())
+                snippets.append(Snippet(
+                    id=slugify_champion(champ),
+                    champ=champ,
+                    text=text,
+                ))
+            # Be polite - small delay between requests
+            time.sleep(0.2)
+    
+    logger.debug(f"Fetched {len(snippets)} guides for {len(champ_names)} champions")
+    return snippets

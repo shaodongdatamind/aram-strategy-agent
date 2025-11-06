@@ -4,7 +4,7 @@ from typing import Any, Dict, List
 
 from .state import AgentState, AgentInputs
 from .db import load_patch_data
-from .retrieval import GuideRetriever
+from .guide import fetch_guides
 from .threat import compute_threat_scores
 from .strategy_agent import generate_strategy
 from .guardrail import guardrail_check
@@ -14,37 +14,32 @@ DEFAULT_PATCH = "14.99"
 
 
 def node_load_patch_facts(state: AgentState) -> AgentState:
-    items, champs, runes, guides = load_patch_data(state.patch)
+    items, champs, runes = load_patch_data(state.patch)
     state.facts = {
         "items": items,
         "champs": champs,
         "runes": runes,
-        "guides": guides,
     }
     state.retrieval = {"snippets": []}
     return state
 
 
-def node_search_guides (state: AgentState) -> AgentState:
-    guides = []
-    if state.facts and "guides" in state.facts:
-        guides = state.facts["guides"]  # type: ignore[assignment]
-    retriever = GuideRetriever(guides)
-    q_terms: List[str] = []
+def node_search_guides(state: AgentState) -> AgentState:
+    """Fetch guides at runtime for relevant champions."""
+    champ_names: List[str] = []
     if state.inputs.mode == "pre_game":
-        q_terms = (state.inputs.ally_comp or []) + (state.inputs.enemy_comp or [])
+        champ_names = (state.inputs.ally_comp or []) + (state.inputs.enemy_comp or [])
     else:
-        q_terms = [state.inputs.my_champ or ""]
-        if state.inputs.question:
-            q_terms += state.inputs.question.split()
-    query = " ".join([t for t in q_terms if t])
-    snippets = retriever.search(query=query, k=5)
+        if state.inputs.my_champ:
+            champ_names = [state.inputs.my_champ]
+    
+    snippets = fetch_guides(champ_names)
     state.retrieval = {"snippets": snippets}
     return state
 
 
 def node_threat(state: AgentState) -> AgentState:
-    scores = compute_threat_scores(state.inputs.ally_comp or [], state.inputs.enemy_comp or [])
+    scores = compute_threat_scores(state.patch, state.inputs.ally_comp or [], state.inputs.enemy_comp or [])
     state.threat = {"scores": scores}
     return state
 
@@ -66,7 +61,7 @@ def build_initial_state(patch: str, inputs: AgentInputs, profile: Dict[str, Any]
 def run_pev(state: AgentState, max_loops: int = 1) -> AgentState:
     # plan -> evidence -> verify
     state = node_load_patch_facts(state)
-    state = node_search_guides (state)
+    state = node_search_guides(state)
     state = node_threat(state)
     state = node_strategy(state)
     state = node_guardrail(state)
